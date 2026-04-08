@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MedicSync Tactical Command</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <style>
-        /* 1. GENERAL TACTICAL STYLING */
+        /* GENERAL TACTICAL STYLING */
         body {
             background-color: #0a0e11;
             color: #e0e6ed;
@@ -14,14 +17,14 @@
             padding: 20px;
         }
 
-        /* 2. HEADER */
+        /* HEADER */
         .tactical-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid #1f2d38;
             padding-bottom: 15px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
         .tactical-header h1 { margin: 0; font-size: 24px; letter-spacing: 2px; }
         .tactical-header h1 span { color: #5b7489; font-size: 14px; }
@@ -35,20 +38,49 @@
             background-color: #0b3d1b;
             color: #4ade80;
         }
-        .status-badge.offline {
-            border-color: #f87171;
-            background-color: #3d0b0b;
-            color: #f87171;
+        .status-badge.offline { border-color: #f87171; background-color: #3d0b0b; color: #f87171; }
+
+        /* ========================================= */
+        /* MAP STYLING                               */
+        /* ========================================= */
+        #tactical-map {
+            height: 400px;
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #1f2d38;
+            margin-bottom: 30px;
+            background-color: #000;
         }
 
-        /* 3. SQUAD GRID */
+        /* Tactical Map Dots (Overrides default blue pins) */
+        .map-dot {
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 8px rgba(255,255,255,0.5);
+        }
+        .dot-red { background-color: #ef4444; border-color: #7f1d1d; animation: pulse 1.5s infinite; }
+        .dot-yellow { background-color: #eab308; border-color: #713f12; }
+        .dot-green { background-color: #22c55e; border-color: #14532d; }
+
+        /* Customizing the Map Popup */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background-color: #121a21;
+            color: #e0e6ed;
+            border: 1px solid #5b7489;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .popup-title { font-size: 16px; font-weight: bold; border-bottom: 1px solid #5b7489; padding-bottom: 5px; margin-bottom: 5px;}
+        .popup-data { margin: 2px 0; font-size: 14px; }
+        /* ========================================= */
+
+        /* SQUAD GRID */
         #squad-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 20px;
         }
 
-        /* 4. SOLDIER CARDS */
+        /* SOLDIER CARDS */
         .soldier-card {
             background-color: #121a21;
             padding: 20px;
@@ -56,20 +88,13 @@
             box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
         }
         
-        /* Status Borders */
         .border-red { border-left: 5px solid #ef4444; }
         .border-yellow { border-left: 5px solid #eab308; }
         .border-green { border-left: 5px solid #22c55e; }
 
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .card-header h2 { margin: 0; font-size: 20px; }
 
-        /* Triage Tags */
         .tag { padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; }
         .tag-red { background-color: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
         .tag-yellow { background-color: #eab308; color: #000; }
@@ -92,20 +117,6 @@
         .text-green { color: #22c55e; }
         .text-blue { color: #38bdf8; }
 
-        .triage-btn {
-            width: 100%;
-            padding: 12px;
-            background-color: transparent;
-            color: #e0e6ed;
-            border: 1px solid #5b7489;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: inherit;
-            font-weight: bold;
-            transition: 0.2s;
-        }
-        .triage-btn:hover { background-color: #5b7489; color: #fff; }
-
         .no-signal { color: #5b7489; font-size: 18px; text-align: center; grid-column: 1 / -1; padding: 50px; }
 
         @keyframes pulse {
@@ -120,61 +131,108 @@
     <header class="tactical-header">
         <h1>MEDICSYNC <br><span>TACTICAL COMMAND</span></h1>
         <div id="connection-status" class="status-badge">
-            🟢 UPLINK SECURE
+            SEARCHING...
         </div>
     </header>
 
+    <div id="tactical-map"></div>
+
     <div id="squad-grid">
-        <div class="no-signal">SEARCHING FOR SQUAD SIGNALS...</div>
+        <div class="no-signal">AWAITING TELEMETRY...</div>
     </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         const gridElement = document.getElementById('squad-grid');
         const statusElement = document.getElementById('connection-status');
 
-        // Function to fetch data from your Node.js server
+        // ==========================================
+        // INITIALIZE THE MAP
+        // ==========================================
+        // Set initial view coordinates and zoom level (15 is good for city/town view)
+        const map = L.map('tactical-map').setView([29.3496, 79.5499], 15);
+
+        // Load the "Dark Matter" tile layer for that military look
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Object to keep track of our map markers so we don't redraw them every second
+        const squadMarkers = {};
+        // ==========================================
+
         async function fetchVitals() {
             try {
-                // Connect to your local server
                 const response = await fetch('http://localhost:3000/api/vitals');
                 const soldiers = await response.json();
                 
-                // If server is up, update status badge
                 statusElement.className = 'status-badge';
                 statusElement.innerHTML = '🟢 UPLINK SECURE';
 
                 updateDashboard(soldiers);
             } catch (error) {
-                // If server fails or Wi-Fi drops
                 statusElement.className = 'status-badge offline';
-                statusElement.innerHTML = '🔴 LOCAL LAN MODE';
-                console.error("Comm Link Severed", error);
+                statusElement.innerHTML = '🔴 COMM LINK SEVERED';
             }
         }
 
-        // Function to draw the HTML based on the data
         function updateDashboard(soldiers) {
-            if (soldiers.length === 0) {
-                gridElement.innerHTML = '<div class="no-signal">NO SQUAD DATA DETECTED...</div>';
-                return;
-            }
+            if (soldiers.length === 0) return;
+            gridElement.innerHTML = ''; // Clear grid
 
-            // Clear the grid
-            gridElement.innerHTML = '';
-
-            // Loop through each soldier and create a card
             soldiers.forEach(soldier => {
-                // Determine text colors based on heart rate
-                const hrColorClass = soldier.heart_rate > 100 || soldier.heart_rate < 50 ? 'text-red' : 'text-green';
                 const statusLower = soldier.status.toLowerCase();
+                const hrColorClass = soldier.heart_rate > 100 || soldier.heart_rate < 50 ? 'text-red' : 'text-green';
 
+                // 1. UPDATE THE MAP
+                if (soldier.latitude && soldier.longitude && soldier.latitude !== 0) {
+                    
+                    // Create the HTML for the popup window
+                    const popupHTML = `
+                        <div class="popup-title">${soldier.service_number}</div>
+                        <p class="popup-data"><b>STAT:</b> <span class="text-${statusLower}">${soldier.status}</span></p>
+                        <p class="popup-data"><b>HR:</b> ${soldier.heart_rate} BPM</p>
+                        <p class="popup-data"><b>O2:</b> ${soldier.spo2}%</p>
+                    `;
+
+                    if (squadMarkers[soldier.service_number]) {
+                        // Marker exists: update its position and popup text
+                        squadMarkers[soldier.service_number].setLatLng([soldier.latitude, soldier.longitude]);
+                        squadMarkers[soldier.service_number].getPopup().setContent(popupHTML);
+                        
+                        // Update color if status changed
+                        squadMarkers[soldier.service_number].setIcon(L.divIcon({
+                            className: `map-dot dot-${statusLower}`,
+                            iconSize: [16, 16]
+                        }));
+                    } else {
+                        // Marker doesn't exist: Create a new custom glowing dot
+                        const tacticalIcon = L.divIcon({
+                            className: `map-dot dot-${statusLower}`,
+                            iconSize: [16, 16] // Size of the dot
+                        });
+
+                        // Place it on the map and bind the popup
+                        const marker = L.marker([soldier.latitude, soldier.longitude], { icon: tacticalIcon }).addTo(map);
+                        marker.bindPopup(popupHTML);
+                        
+                        // Save to our tracking object
+                        squadMarkers[soldier.service_number] = marker;
+
+                        // Auto-center the map to the first soldier found
+                        map.panTo([soldier.latitude, soldier.longitude]);
+                    }
+                }
+
+                // 2. UPDATE THE GRID CARDS (Same as before)
                 const cardHTML = `
                     <div class="soldier-card border-${statusLower}">
                         <div class="card-header">
                             <h2>${soldier.service_number}</h2>
                             <span class="tag tag-${statusLower}">${soldier.status}</span>
                         </div>
-
                         <div class="vitals-box">
                             <div class="vital">
                                 <span class="label">HEART RATE</span>
@@ -185,22 +243,14 @@
                                 <span class="value text-blue">${soldier.spo2} <small>%</small></span>
                             </div>
                         </div>
-
-                        <button class="triage-btn" onclick="alert('Opening map for ${soldier.service_number}')">
-                            OPEN CASUALTY CARD
-                        </button>
                     </div>
                 `;
-                
-                // Add the card to the grid
                 gridElement.innerHTML += cardHTML;
             });
         }
 
-        // Run the fetch function every 1000 milliseconds (1 second)
+        // Fetch data every 1 second
         setInterval(fetchVitals, 1000);
-        
-        // Initial fetch
         fetchVitals();
     </script>
 </body>
