@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedicSync Tactical Command</title>
+    <style>
+        /* 1. GENERAL TACTICAL STYLING */
+        body {
+            background-color: #0a0e11;
+            color: #e0e6ed;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* 2. HEADER */
+        .tactical-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #1f2d38;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        .tactical-header h1 { margin: 0; font-size: 24px; letter-spacing: 2px; }
+        .tactical-header h1 span { color: #5b7489; font-size: 14px; }
+        
+        .status-badge {
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            border: 1px solid #4ade80;
+            background-color: #0b3d1b;
+            color: #4ade80;
+        }
+        .status-badge.offline {
+            border-color: #f87171;
+            background-color: #3d0b0b;
+            color: #f87171;
+        }
+
+        /* 3. SQUAD GRID */
+        #squad-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        /* 4. SOLDIER CARDS */
+        .soldier-card {
+            background-color: #121a21;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        /* Status Borders */
+        .border-red { border-left: 5px solid #ef4444; }
+        .border-yellow { border-left: 5px solid #eab308; }
+        .border-green { border-left: 5px solid #22c55e; }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .card-header h2 { margin: 0; font-size: 20px; }
+
+        /* Triage Tags */
+        .tag { padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .tag-red { background-color: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
+        .tag-yellow { background-color: #eab308; color: #000; }
+        .tag-green { background-color: #22c55e; color: #fff; }
+
+        /* Vitals Display */
+        .vitals-box {
+            display: flex;
+            justify-content: space-between;
+            background-color: #080b0e;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .vital { display: flex; flex-direction: column; }
+        .vital .label { font-size: 10px; color: #5b7489; margin-bottom: 5px; }
+        .vital .value { font-size: 28px; font-weight: bold; }
+        
+        .text-red { color: #ef4444; }
+        .text-green { color: #22c55e; }
+        .text-blue { color: #38bdf8; }
+
+        .triage-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: transparent;
+            color: #e0e6ed;
+            border: 1px solid #5b7489;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .triage-btn:hover { background-color: #5b7489; color: #fff; }
+
+        .no-signal { color: #5b7489; font-size: 18px; text-align: center; grid-column: 1 / -1; padding: 50px; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="tactical-header">
+        <h1>MEDICSYNC <br><span>TACTICAL COMMAND</span></h1>
+        <div id="connection-status" class="status-badge">
+            🟢 UPLINK SECURE
+        </div>
+    </header>
+
+    <div id="squad-grid">
+        <div class="no-signal">SEARCHING FOR SQUAD SIGNALS...</div>
+    </div>
+
+    <script>
+        const gridElement = document.getElementById('squad-grid');
+        const statusElement = document.getElementById('connection-status');
+
+        // Function to fetch data from your Node.js server
+        async function fetchVitals() {
+            try {
+                // Connect to your local server
+                const response = await fetch('http://localhost:3000/api/vitals');
+                const soldiers = await response.json();
+                
+                // If server is up, update status badge
+                statusElement.className = 'status-badge';
+                statusElement.innerHTML = '🟢 UPLINK SECURE';
+
+                updateDashboard(soldiers);
+            } catch (error) {
+                // If server fails or Wi-Fi drops
+                statusElement.className = 'status-badge offline';
+                statusElement.innerHTML = '🔴 LOCAL LAN MODE';
+                console.error("Comm Link Severed", error);
+            }
+        }
+
+        // Function to draw the HTML based on the data
+        function updateDashboard(soldiers) {
+            if (soldiers.length === 0) {
+                gridElement.innerHTML = '<div class="no-signal">NO SQUAD DATA DETECTED...</div>';
+                return;
+            }
+
+            // Clear the grid
+            gridElement.innerHTML = '';
+
+            // Loop through each soldier and create a card
+            soldiers.forEach(soldier => {
+                // Determine text colors based on heart rate
+                const hrColorClass = soldier.heart_rate > 100 || soldier.heart_rate < 50 ? 'text-red' : 'text-green';
+                const statusLower = soldier.status.toLowerCase();
+
+                const cardHTML = `
+                    <div class="soldier-card border-${statusLower}">
+                        <div class="card-header">
+                            <h2>${soldier.service_number}</h2>
+                            <span class="tag tag-${statusLower}">${soldier.status}</span>
+                        </div>
+
+                        <div class="vitals-box">
+                            <div class="vital">
+                                <span class="label">HEART RATE</span>
+                                <span class="value ${hrColorClass}">${soldier.heart_rate} <small>BPM</small></span>
+                            </div>
+                            <div class="vital">
+                                <span class="label">OXYGEN</span>
+                                <span class="value text-blue">${soldier.spo2} <small>%</small></span>
+                            </div>
+                        </div>
+
+                        <button class="triage-btn" onclick="alert('Opening map for ${soldier.service_number}')">
+                            OPEN CASUALTY CARD
+                        </button>
+                    </div>
+                `;
+                
+                // Add the card to the grid
+                gridElement.innerHTML += cardHTML;
+            });
+        }
+
+        // Run the fetch function every 1000 milliseconds (1 second)
+        setInterval(fetchVitals, 1000);
+        
+        // Initial fetch
+        fetchVitals();
+    </script>
+</body>
+</html>
